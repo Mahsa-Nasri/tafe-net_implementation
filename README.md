@@ -15,7 +15,8 @@ What this repository adds to the upstream code:
   longer publicly accessible.
 - **Extension**: *to be added* (see [Extension](#extension)).
 
-> Status: zero-shot (Table 2) replication in progress. Compositional (Table 4) pipeline written, not yet run.
+> Status: AWA2 ZSL run with 3 seeds; it does **not** reach the paper's number (see [2.3](#23-results)).
+> Other ZSL datasets and GZSL not yet run. Compositional (Table 4) pipeline written, not yet run.
 
 ---
 
@@ -78,7 +79,31 @@ A 60-epoch AWA2 run takes about 30 minutes on an RTX 3080 Laptop GPU.
 
 ### 2.3 Results
 
-*Pending; filled in from `results/zsl.md`.*
+AWA2, conventional ZSL, top-1 (%), mean ± std over seeds 0, 1, 2 ([results/zsl.md](results/zsl.md)):
+
+| config | task-net hidden | best epoch, upstream metric | best epoch, standard metric | final epoch, upstream metric | final epoch, standard metric | paper |
+|---|---|---|---|---|---|---|
+| `awa2-zsl-upstream` (upstream `configs.json`) | 512 | 48.7 ± 4.4 | 45.3 ± 3.9 | 33.6 ± 0.7 | 33.0 ± 0.9 | 69.3 |
+| `awa2-zsl` (paper text) | 2048 | 36.7 ± 3.2 | 32.5 ± 4.9 | 31.9 ± 4.3 | 25.8 ± 3.7 | 69.3 |
+
+"Best epoch" is the epoch with the highest upstream metric on the test set (how the upstream code picks
+its number). "Final epoch" is epoch 60, with no selection on the test set.
+
+What we observe:
+
+- **We do not reproduce the paper's AWA2 result.** Even the most generous number (best epoch on the test
+  set, upstream metric) is about 20 points below 69.3.
+- **The paper's hidden size (2048) is worse than the upstream config's (512)**, by 12 points at the best epoch.
+- **Unseen-class accuracy peaks early (epochs 4 to 27) and then falls**, while training accuracy on the
+  seen classes reaches about 97%. After the learning rate drops at epoch 30, the model fits the seen classes and
+  stops transferring to unseen ones.
+- **The classification loss hardly moves during training** (about 0.74 to 0.68). This fits the double
+  sigmoid in the upstream loss (difference 3 below): `BCEWithLogitsLoss` applied to an output that has
+  already gone through a sigmoid gives a weak gradient. This is a hypothesis we have not tested yet.
+- Runs are deterministic: the same seed gives the same numbers.
+
+Remaining datasets (AWA1, CUB, SUN, aPY) and GZSL: *not yet run*
+(`python tools/run_zsl.py all --seeds 0 1 2`).
 
 Paper numbers for reference (Table 2):
 

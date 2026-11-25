@@ -52,12 +52,19 @@ def main():
     ap.add_argument('--root', default='zero-shot/checkpoints')
     ap.add_argument('--out', default=None)
     ap.add_argument('--min-epochs', type=int, default=0, help='skip runs with fewer logged epochs')
+    ap.add_argument('--configs-file', default='configs_zsl.json',
+                    help='only report configs named in this file (ad-hoc runs are skipped)')
+    ap.add_argument('--all', action='store_true', help='report every run, named or not')
     args = ap.parse_args()
+    with open(args.configs_file) as f:
+        known = {k for k in json.load(f) if not k.startswith('_')}
 
     groups = defaultdict(list)  # (cfg, dataset, gzsl) -> list of (seed, rows)
     for log in sorted(glob.glob(os.path.join(args.root, '*', '*', '*', 'run_*', 'log_train.txt'))):
         run_dir = os.path.dirname(log)
         a = dict(json.load(open(os.path.join(run_dir, 'arguments.json'))))
+        if not args.all and a['config_name'] not in known:
+            continue
         rows = parse(log)
         if not rows or len(rows) < max(args.min_epochs, 1) or len(rows) < a['epochs']:
             continue  # unfinished or smoke runs
