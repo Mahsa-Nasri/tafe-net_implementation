@@ -2,3 +2,8 @@
 .gitignore
 .idea/
 .DS_Store
+.venv/
+data/
+zero-shot/checkpoints/
+logs/
+*.out

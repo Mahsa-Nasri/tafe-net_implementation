@@ -1,0 +1,17 @@
+{
+  "_comment": "Replication configs for Table 2 (ZSL + GZSL). Values from the paper (Sec. 4.1, 'Training details' and 'Model configurations') unless noted. The upstream configs.json only defines awa2 (with --hidden-dim 512); awa2-zsl-upstream / awa2-gzsl-upstream reproduce those exactly. --emb-dim = number of attributes. AWA1: 10 epochs, lr /10 at epoch 5 (paper). aPY: 2-layer task network (paper). --low/--high: epochs at which lr is divided by 10 (utils.adjust_learning_rate_epoch).",
+
+  "awa2-zsl-upstream":  {"--dataset": "awa2", "-a": "tafenet_default", "--emb-dim": "85",  "--hidden-dim": "512",  "--epochs": "60", "--low": "30", "--high": "45"},
+  "awa2-gzsl-upstream": {"--dataset": "awa2", "-a": "tafenet_default", "--emb-dim": "85",  "--hidden-dim": "512",  "--epochs": "60", "--low": "30", "--high": "45", "--gzsl": ""},
+
+  "awa1-zsl":  {"--dataset": "awa1", "-a": "tafenet_default", "--emb-dim": "85",  "--hidden-dim": "2048", "--epochs": "10", "--low": "5",  "--high": "10"},
+  "awa1-gzsl": {"--dataset": "awa1", "-a": "tafenet_default", "--emb-dim": "85",  "--hidden-dim": "2048", "--epochs": "10", "--low": "5",  "--high": "10", "--gzsl": ""},
+  "awa2-zsl":  {"--dataset": "awa2", "-a": "tafenet_default", "--emb-dim": "85",  "--hidden-dim": "2048", "--epochs": "60", "--low": "30", "--high": "45"},
+  "awa2-gzsl": {"--dataset": "awa2", "-a": "tafenet_default", "--emb-dim": "85",  "--hidden-dim": "2048", "--epochs": "60", "--low": "30", "--high": "45", "--gzsl": ""},
+  "cub-zsl":   {"--dataset": "cub",  "-a": "tafenet_default", "--emb-dim": "312", "--hidden-dim": "2048", "--epochs": "60", "--low": "30", "--high": "45"},
+  "cub-gzsl":  {"--dataset": "cub",  "-a": "tafenet_default", "--emb-dim": "312", "--hidden-dim": "2048", "--epochs": "60", "--low": "30", "--high": "45", "--gzsl": ""},
+  "sun-zsl":   {"--dataset": "sun",  "-a": "tafenet_default", "--emb-dim": "102", "--hidden-dim": "2048", "--epochs": "60", "--low": "30", "--high": "45"},
+  "sun-gzsl":  {"--dataset": "sun",  "-a": "tafenet_default", "--emb-dim": "102", "--hidden-dim": "2048", "--epochs": "60", "--low": "30", "--high": "45", "--gzsl": ""},
+  "apy-zsl":   {"--dataset": "apy",  "-a": "tafenet_2layer",  "--emb-dim": "64",  "--hidden-dim": "2048", "--epochs": "60", "--low": "30", "--high": "45"},
+  "apy-gzsl":  {"--dataset": "apy",  "-a": "tafenet_2layer",  "--emb-dim": "64",  "--hidden-dim": "2048", "--epochs": "60", "--low": "30", "--high": "45", "--gzsl": ""}
+}

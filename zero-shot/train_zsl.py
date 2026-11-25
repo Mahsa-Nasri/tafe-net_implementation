@@ -62,6 +62,8 @@ def parse_args():
                         help='high thresholds')
     parser.add_argument('--beta', type=float, default=1,
                         help='coefficient for the embedding loss')
+    parser.add_argument('--seed', type=int, default=0,
+                        help='random seed (replication addition)')
     args = parser.parse_args()
 
     # save directory
@@ -82,6 +84,11 @@ def parse_args():
 
 def main():
     args = parse_args()
+    import random
+    import numpy as np
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
     handlers = [logging.FileHandler(args.logger_file, mode='w'),
                 logging.StreamHandler()]
@@ -180,22 +187,29 @@ def run_training(args):
         train(args, train_loader, model, criterion, optimizer, epoch)
 
         if args.gzsl:
-            avg_prec1_u = validate(args, test_loader_unseen, model)
+            avg_prec1_u, full_u = validate(args, test_loader_unseen, model)
 
-            avg_prec1_s = validate(args, test_loader_seen, model)
+            avg_prec1_s, full_s = validate(args, test_loader_seen, model)
 
             avg_prec1_h = (2 * avg_prec1_s * avg_prec1_u) / (
                 avg_prec1_s + avg_prec1_u)
+            full_h = 2 * full_s * full_u / (full_s + full_u + 1e-12)
             avg_prec1 = avg_prec1_h
             logging.info('Epoch [{}] Val: * Summary: \n'
                          '* GZSL @Unseen: {:.4f} \t '
                          '@Seen: {:.4f} \t @mean_h: {:.4f}'
                          '\n'.format(epoch, avg_prec1_u, avg_prec1_s,
                                      avg_prec1_h))
+            logging.info('REPL epoch={} upstream_u={:.4f} upstream_s={:.4f} '
+                         'upstream_h={:.4f} full_u={:.4f} full_s={:.4f} '
+                         'full_h={:.4f}'.format(epoch, avg_prec1_u, avg_prec1_s,
+                                                avg_prec1_h, full_u, full_s, full_h))
         else:
-            avg_prec1 = validate(args, test_loader, model)
+            avg_prec1, full = validate(args, test_loader, model)
             logging.info('Epoch [{}] Val: * Summary: \n'
                          '* ZSL @top1: {:.4f}\n'.format(epoch, avg_prec1))
+            logging.info('REPL epoch={} upstream_top1={:.4f} '
+                         'full_top1={:.4f}'.format(epoch, avg_prec1, full))
 
         # remember best prec@1 and save checkpoint
         is_best = avg_prec1 > best_prec1
@@ -310,6 +324,7 @@ def validate(args, test_loader, model):
     ntasks = len(test_loader.dataset.task_list)
     logging.info('Evaluation: {} novel tasks'.format(ntasks))
     top1 = AverageMeter()
+    all_pred, all_tgt = [], []
 
     with torch.no_grad():
         with tqdm(total=len(test_loader), ascii=True, desc='test') as t:
@@ -331,14 +346,22 @@ def validate(args, test_loader, model):
 
                 prec1, = per_class_avg_accuracy(out, mtarget, ntasks, topk=(1,))
                 top1.update(prec1.item(), size[0])
+                all_pred.append(out.argmax(1).cpu())
+                all_tgt.append(mtarget.cpu())
                 # measure elapsed time
                 batch_time.update(time.time() - end)
                 end = time.time()
                 t.set_postfix(prec1=prec1.item())
                 t.update()
 
-    avg_prec1 = top1.avg
-    return avg_prec1
+    # Upstream metric: per-class accuracy computed inside each batch of 32, then
+    # averaged over batches. Standard metric (Xian et al.): per-class accuracy over
+    # the whole test set, averaged over classes. We return both.
+    pred, tgt = torch.cat(all_pred), torch.cat(all_tgt)
+    per_cls = [(pred[tgt == c] == c).float().mean().item()
+               for c in tgt.unique().tolist()]
+    full = 100.0 * sum(per_cls) / len(per_cls)
+    return top1.avg, full
 
 
 def test(args):
@@ -367,7 +390,7 @@ def test(args):
         test_loader = torch.utils.data.DataLoader(
             testset, batch_size=args.batch_size, shuffle=False,
             num_workers=0, pin_memory=False)
-        avg_prec1_u = validate(args, test_loader, model)
+        avg_prec1_u, full_u = validate(args, test_loader, model)
 
         logging.info('evaluating seen category ...')
         testset = ZSData(root=args.data_path, subset='test',
@@ -376,7 +399,7 @@ def test(args):
         test_loader = torch.utils.data.DataLoader(
             testset, batch_size=args.batch_size, shuffle=False,
             num_workers=0, pin_memory=False)
-        avg_prec1_s = validate(args, test_loader, model)
+        avg_prec1_s, full_s = validate(args, test_loader, model)
 
         avg_prec1_h = (2 * avg_prec1_s * avg_prec1_u) / (
             avg_prec1_s + avg_prec1_u)
@@ -384,6 +407,8 @@ def test(args):
         logging.info('* Summary: GZSL @Unseen: {:.4f}\t@Seen: {:.4f}\t'
                      '@mean_h: {:.4f}'.format(
             avg_prec1_u, avg_prec1_s, avg_prec1_h))
+        logging.info('REPL test full_u={:.4f} full_s={:.4f} full_h={:.4f}'.format(
+            full_u, full_s, 2 * full_s * full_u / (full_s + full_u + 1e-12)))
     else:
         logging.info('Evaluating classic zero-shot learning setting ...')
         testset = ZSData(
@@ -393,10 +418,10 @@ def test(args):
         test_loader = torch.utils.data.DataLoader(
             testset, batch_size=args.batch_size, shuffle=False,
             num_workers=args.num_workers, pin_memory=True)
-        avg_prec1_zsl, probs, decisions = validate(
-            args, test_loader, model)
+        avg_prec1_zsl, full = validate(args, test_loader, model)
         logging.info('* Summary: Classic ZSL '
                      '@top1 = {:.4f}%'.format(avg_prec1_zsl))
+        logging.info('REPL test full_top1={:.4f}'.format(full))
 
 
 if __name__ == '__main__':

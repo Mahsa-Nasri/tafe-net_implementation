@@ -1,172 +1,158 @@
-# TAFE-Net
+# TAFE-Net replication (and extension)
 
-This is the PyTorch Implementation for our paper: 
+A replication of **TAFE-Net: Task-Aware Feature Embeddings for Low Shot Learning**
+(Wang, Yu, Wang, Darrell, Gonzalez, CVPR 2019, [arXiv:1904.05967](https://arxiv.org/abs/1904.05967)),
+built on the authors' code ([ucbdrive/tafe-net](https://github.com/ucbdrive/tafe-net), Apache-2.0).
+The authors' original README is kept as [README_upstream.md](README_upstream.md).
 
-TAFE-Net: Task-aware Feature Embeddings for Low Shot Learning (CVPR 2019)
+What this repository adds to the upstream code:
 
-[Xin Wang](https://people.eecs.berkeley.edu/~xinw/), [Fisher Yu](https://www.yf.io/), Ruth Wang, [Trevor Darrell](https://people.eecs.berkeley.edu/~trevor/), [Joseph E. Gonzalez](https://people.eecs.berkeley.edu/~jegonzal/)
+- **Reproducible pipeline**: scripted download and checksum checks, data preflight checks, configs for
+  all five zero-shot datasets (upstream only ships AWA2), multi-seed runs, and a results summarizer.
+- **Two evaluation metrics, side by side**: the upstream batched metric and the standard per-class
+  accuracy (see [Deviations](#differences-between-the-paper-and-the-code)).
+- **Rebuilt compositional data** (MIT-States, StanfordVRD), because the upstream feature bundle is no
+  longer publicly accessible.
+- **Extension**: *to be added* (see [Extension](#extension)).
 
-ArXiv link: [https://arxiv.org/abs/1904.05967](https://arxiv.org/abs/1904.05967)
+> Status: zero-shot (Table 2) replication in progress. Compositional (Table 4) pipeline written, not yet run.
 
-**Abstract** 
+---
 
-Learning good feature embeddings for images often requires substantial training data. As a consequence, 
-in settings where training data is limited (e.g., few-shot and zero-shot learning), we are typically forced 
-to use a generic feature embedding across various tasks. Ideally, we want to construct feature embeddings 
-that are tuned for the given task. In this work, we propose Task-Aware Feature Embedding Networks (TAFE-Nets) 
-to learn how to adapt the image representation to a new task in a meta learning fashion. Our network is composed 
-of a meta learner and a prediction network. Based on a task input, the meta learner generates parameters for the 
-feature layers in the prediction network so that the feature embedding can be accurately adjusted for that task. 
-We show that TAFE-Net is highly effective in generalizing to new tasks or concepts and evaluate the TAFE-Net on 
-a range of benchmarks in zero-shot and few-shot learning. Our model matches or exceeds the state-of-the-art on 
-all tasks. In particular, our approach improves the prediction accuracy of unseen attribute-object pairs by 4 
-to 15 points on the challenging visual attribute-object composition task.
+## 1. Setup
 
-<img src="figs/arch.jpg" width="750">
+Tested on Windows 11 + RTX 3080 Laptop (8 GB), Python 3.12, PyTorch 2.6 (CUDA 12.4). Linux works the same way.
 
+```bash
+git clone https://github.com/Mahsa-Nasri/tafe-net_implementation.git
+cd tafe-net_implementation
+git checkout replication
 
-## Requirements
-- Pytorch (>0.4.0, tested on Pytorch 1.1.0)
-- Scipy
-
-
-
-## Compositional Zero-shot Learning (attribute-object composition)
-
-For the compositional zero-shot learning task, we are given a set of images and 
-lists of attributes and objects. During training, only images of a subset of 
-attribute-object composition are available. For testing, the model is tested
-on images of unseen (novel) attribute-object composition. We evaluate TAFE-Net
-on two datasets, MIT-States and StanfordVRD. For StanfordVRD, instead of 
-attribute-object pairs, we instead use the subject-predicate-object(SPO) 
-triplet as one composition.  
-
-#### Data Statistics
-
-Dataset | Mode | Num_Compositions | Num_Images 
--- | -- | -- | -- 
-MIT-States | Train | 1292 | 34K
-MIT-States | Test  | 700  | 19K
-StanfordVRD | Train | 6672 | - 
-StanfordVRD  | Test  | 1029 | 1000
-
-Download the processed features and labels from 
-[here](https://drive.google.com/open?id=1rV8LYZ2h8aEdaJwzxfn1U-JVdMpOlkwT) and save the data
-to `data/compositional-zs`. 
-
-In the original paper, we evaluate the model with ResNet-101 as the feature
-extractor and in the recent paper [Task-aware Deep Sampling](https://arxiv.org/pdf/1906.04854.pdf), there are 
-benchmark results of TAFE-Net with other backbones: `ResNet-18`, `DLA-34`
-and `DLA-102`. 
-
-Dataset | Model | ResNet-18 @Top1 (%) | ResNet-101 @Top1 (%) | 
-DLA-34 @Top1 (%) | DLA-102 @Top1 (%)
--- | -- | -- | -- | -- | --
-MIT-States | RedWine[1] | 12.0 | 17.4 | 14.6 | 17.0 
-MIT-States | AttOperator[2] | 14.2 | 15.7 | 14.4 | 15.8
-MIT-States | **TAFE-Net**| 15.1 | 17.2 | 16.1 | 17.0 
-StanfordVRD | RedWine[1] | 8.3 | 10.1 | 9.5 | 9.8 
-StanfordVRD | AttOperator[2] | 8.0 | 11.5 | 7.9 | 10.8 
-StanfordVRD | **TAFE-Net**| 10.4 | 12.3 | 10.4 | 12.7
-
-To train the model, you can simply run
-```angular2html
-python3 -m compositional-zs.train_compose --cmd train --arch [ARCH] -cfg [ConfigName]
-```
-For testing, 
-```angular2html
-python3 -m compositional-zs.train_compose --cmd test --resume [CheckpointPath]
+python -m venv .venv
+# Windows: .venv\Scripts\activate      Linux/macOS: source .venv/bin/activate
+pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
+pip install scipy tqdm
 ```
 
-To further simplify the procedure, you can write the configurations in 
-`configs.json`. Some benchmark configs are already provided in `configs.josn`.
-You can just launch the job by specifying the configuration name as follows
-```angular2html
-python launch.py [ConfigName]
+All commands below are run from the repository root.
+
+## 2. Zero-shot learning (paper Table 2)
+
+### 2.1 Data
+
+The paper uses the "proposed splits" and ResNet-101 features of Xian et al.
+([xlsa17](https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/research/zero-shot-learning/zero-shot-learning-the-good-the-bad-and-the-ugly), ~922 MB).
+
+```bash
+bash tools/fetch_local.sh xlsa17          # downloads to data/_incoming/xlsa17/, checks the size
+mkdir -p data/_extract && cd data/_extract && unzip -q ../_incoming/xlsa17/download && cd ../..
+mkdir -p data/zero-shot
+for d in AWA1 AWA2 CUB SUN APY; do mv data/_extract/xlsa17/data/$d data/zero-shot/$(echo $d | tr A-Z a-z); done
 ```
 
-## Zero-shot Learning 
+On Windows run these in Git Bash. Then check the split sizes against Xian et al. (Table 2):
 
-We evaluate TAFE-Net on five benchmark datasets: AWA1, AWA2, aPY, CUB and SUN. 
-You can download the processed data [here](https://drive.google.com/open?id=1cOU8W2Za5TfpXzoCqV06gLEagvt7HXIQ) and save it to `data/zero-shot`. 
-The processed data is originally from [3]. 
-
-We provide benchmark results on both classic zero-shot learning (ZSL) and 
-generalized zero-shot learning (GZSL) as follows. 
-
-For classic zer-shot learning (ZSL), 
-
-Method| SUN | CUB | AWA1 | AWA2 | aPY 
---    | --  | --  | --   | --   | --  
-LATEM | 55.3 | 49.3 | 55.1 | 55.8 | 35.2 
-ALE   | 58.1 | 54.9 | 59.9 | 62.5 | 39.7 
-DeViSE | 56.5 | 52 | 54.2 | 59.7 | 39.8 
-SJE | 53.7 | 53.9 | 65.6 | 61.9 | 32.9 
-ESZSL | 54.5 | 53.9 | 58.2 | 58.6 | 38.3
-SYNC | 56.3 | 55.6 | 54.0 | 46.6 | 23.9
-RelationNet | - | 55.6 | 68.2 | 64.2 | -
-DEM | 61.9 | 51.7 | 68.4 | 67.1 | 35.0 
-f-CLSWGAN* | 60.8 | 57.3 | 68.2 | - | -
-SE*     | **63.4**| **59.6** | 69.5 | 69.2 | -
-SP-AEN*    | 59.2 | 55.4 | - | 58.5 | 24.1  
-**TAFE-Net**   | 60.9 | 56.9 | **70.8** | **69.3** | **42.3**
-
-Models with `*` adopt synthetic features for training which could be 
-considered as complementary approaches to our model as well as other discriminative models
-without `*` presented in the table. 
-
-For generalized zero-shot learning (GZSL), 
-
-Method| SUN u | s | H  | CUB u | s | H |  AWA1 u | s | H |  AWA2 u | s | H |aPY u | s | H 
---    | --  | --  | --   | --  | -- |  --  | --  | --   | --   | --  | --  | --  | --   | --   | --  
-LATEM| 14.7 | 28.8 | 19.5 |15.2 |57.3| 24.0| 7.3| 71.7| 13.3| 11.5| 77.3| 20.0| 0.1| 73.0 |0.2
-ALE  | 21.8 | 33.1 |26.3 | 23.7 | 62.8| 34.4 | 16.8 | 76.1 | 27.5 | 14.0 | 81.8 | 23.9 | 4.6 | 73.7 | 8.7
-DeViSE | 16.9 | 27.4 | 20.9 | 23.8 | 53.0 | 32.8 | 13.4 | 68.7 | 22.4 | 17.1 | 74.7 | 27.8 | 4.9 | 76.9 | 9.2
-SJE | 14.7 | 80.5 | 19.8 | 23.5 | 59.2 | 33.6 | 11.3 | 74.6 | 19.6 | 8.0 | 73.9 | 14.4 | 3.7 | 55.7 | 6.9
-ESZSL | 11.0 | 27.9 | 15.8 | 12.6 | 63.8 | 21.0 | 6.6 | 75.6 | 12.1 | 5.9 | 77.8 | 11.0 | 2.4 | 70.1 | 4.6
-SYNC | 7.9 | 43.3 | 13.4 | 11.5 | 70.9 | 19.8 | 8.9 | 87.3 | 16.2 | 10.0 | 90.5 | 18.0 | 7.4 | 66.3 | 13.3
-RelationNet | - | - | - | 38.1 | 61.1 | 47.0 | 31.4 | 91.3 | 46.7 | 30.0 | 93.4 | 45.3 | - | - | -
-DEM | 61.9 |20.5 | 34.3 | 25.6 | 19.6 | 57.9 | 29.2 | 32.8 | 84.7 | 47.3 | 30.5 | 86.4 | 45.1 | 11.1 | 75.1 | 19.4
-f-CLSWGAN* | 42.6 | 36.6 | **39.4** | 57.7 | 43.7 | **49.7** | 61.4 | 57.9 | 59.6 | - | - | - |- | - | -
-SE*     | 40.9 | 30.5 | 34.9 | 53.3 | 41.5 | 46.7 | 67.8 | 56.3 | 61.5 | 58.3 | 68.1 | **62.8** | - | - | -
-SP-AEN*  | 24.9 | 38.6 | 30.3 | 34.7 | 70.6 | 46.6 | - | - | - | 23.3 | 90.9 | 37.1 60.9 | 56.9 | **70.8** | **69.3** | **42.3**
-**TAFE-Net**  | 27.9 | 40.2  | 33.0 | 41.0 | 61.4 | 49.2 | 50.5 | 84.4 | **63.2** | 36.7 |90.6 | 52.2 | 24.3 | 75.4 | **36.8**
-
-Similar as the compositional zero-shot one, you can train the model by
-```angular2html
-python3 -m zero-shot.train_zsl --cmd train --arch [ARCH] -cfg [ConfigName]
-```
-and test by 
-```angular2html
-python3 -m zero-shot.train_zsl --cmd test --resume [CheckpointPath]
+```bash
+for d in awa1 awa2 cub sun apy; do python tools/check_data.py zsl data/zero-shot/$d; done
 ```
 
-Usually you can just launch the runs by specifying the `config name` in the `config.json` as
-```angular2html
-python launch.py [ConfigName]
+Every dataset should end with `all checks passed`.
+
+### 2.2 Train and evaluate
+
+Each run trains on `trainval` and evaluates on the test split after every epoch.
+
+```bash
+python tools/run_zsl.py all --seeds 0 1 2        # all 12 configs x 3 seeds
+python tools/run_zsl.py awa2-zsl --seeds 0       # or a single config
+python tools/summarize_zsl.py --out results/zsl.md
 ```
 
+The configs are in [configs_zsl.json](configs_zsl.json). Shared settings follow the paper (Sec. 4.1):
+Adam, batch size 32, learning rate 1e-4 for the prediction network and weight generators and 1e-5 for the
+task embedding network, divided by 10 at epochs 30 and 45, 60 epochs in total (AWA1: 10 epochs with the
+drop at epoch 5), embedding-loss weight β = 0.1, and a 2-layer task network for aPY.
+`awa2-*-upstream` reproduce the upstream `configs.json` exactly (it uses hidden size 512, the paper says 2048).
 
-### Citation
-If you find the code useful in your project, please consider citing our paper 
-```angular2html
+A 60-epoch AWA2 run takes about 30 minutes on an RTX 3080 Laptop GPU.
+
+### 2.3 Results
+
+*Pending; filled in from `results/zsl.md`.*
+
+Paper numbers for reference (Table 2):
+
+| | SUN | CUB | AWA1 | AWA2 | aPY |
+|---|---|---|---|---|---|
+| ZSL T1 | 60.9 | 56.9 | 70.8 | 69.3 | 42.2 |
+| GZSL H | 33.0 | 49.2 | 63.2 | 52.2 | 36.8 |
+
+## 3. Unseen attribute-object composition (paper Table 4)
+
+The upstream features for MIT-States and StanfordVRD are on a Google Drive link that is no longer
+accessible, so this repository rebuilds them from public sources:
+
+```bash
+bash tools/fetch_local.sh natural mitstates_hf vrd_json glove
+python -I tools/build_compose_data.py mit-states --natural <natural dir> --images <mit-states images> --glove <glove.6B.300d.txt>
+python -I tools/build_compose_data.py stanfordvrd --vrd-json <json dir> --images <vrd images> --glove <glove.6B.300d.txt>
+python -I tools/extract_features.py data/compositional-zs/mit-states --archs resnet101 --weights-dir data/weights
+python -I tools/check_data.py compose data/compositional-zs/mit-states --feat resnet101
+python -m compositional-zs.train_compose --cmd train -a tafenet_default -cfg mit-states-resnet-101 ...   # see configs.json
+```
+
+The docstrings of [build_compose_data.py](tools/build_compose_data.py) and
+[extract_features.py](tools/extract_features.py) explain every choice made.
+
+*Not yet run.*
+
+## 4. Extension
+
+*To be added.*
+
+## 5. Differences between the paper and the code
+
+Things we found while replicating. Each one is either kept as is, for a faithful replication of the
+published code, or reported as a separate result.
+
+| # | Paper | Upstream code | What we do |
+|---|---|---|---|
+| 1 | Average per-class top-1 accuracy (Xian et al.) | Per-class accuracy computed **inside each test batch of 32**, then averaged over batches (`utils.per_class_avg_accuracy`) | Report both: `upstream` and `full` (whole test set) |
+| 2 | Not stated | The reported number is the **best epoch on the test set** (no validation split) | Report both best-epoch and final-epoch |
+| 3 | Calibrated softmax cross-entropy (Eq. 6) | The model outputs `sigmoid(logit)`, which is then fed to `BCEWithLogitsLoss` (sigmoid applied twice) | Kept for the replication |
+| 4 | Task network hidden size 2048 | `configs.json` uses 512 for AWA2 | Run both (`awa2-*` and `awa2-*-upstream`) |
+| 5 | 2-layer task network for aPY | Only a 3-layer model is defined | Added `tafenet_2layer` in [models.py](models.py) |
+| 6 | MIT-States: 1,292 training pairs | Standard split has 1,262 | Use 1,262 |
+| 7 | Compositional: word2vec (GoogleNews) | Loader uses GloVe 300d | GloVe |
+| 8 | Table 4 headline row uses VGG-16 features | Configs are ResNet/DLA | ResNet-101; compare with Table 5's ResNet-101 row (AP 16.2, top-1 17.2) |
+
+Small code fixes (no effect on training): `test()` in `zero-shot/train_zsl.py` unpacked three values
+from `validate()`, which returns one; added `--seed`.
+
+## 6. Repository layout
+
+```
+configs.json            upstream configs (compositional + AWA2)
+configs_zsl.json        replication configs for all five ZSL datasets
+models.py, tafenet.py   TAFE-Net model (meta learner + prediction network)
+zero-shot/              ZSL data loader and training script
+compositional-zs/       attribute-object composition loader and training script
+tools/
+  fetch_local.sh        download + checksum every public source
+  check_data.py         data preflight (split sizes, GloVe coverage, feature files)
+  build_compose_data.py rebuild MIT-States / StanfordVRD splits and metadata
+  extract_features.py   extract ImageNet CNN features for the compositional task
+  run_zsl.py            run ZSL configs over several seeds
+  summarize_zsl.py      collect logs into the results table
+results/                summarized results (committed)
+```
+
+## Citation
+
+```bibtex
 @inproceedings{wang2019tafe,
   title={TAFE-Net: Task-Aware Feature Embeddings for Low Shot Learning},
   author={Wang, Xin and Yu, Fisher and Wang, Ruth and Darrell, Trevor and Gonzalez, Joseph E},
-  booktitle={Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition},
-  pages={1831--1840},
-  year={2019}
+  booktitle={CVPR}, pages={1831--1840}, year={2019}
 }
 ```
-
-### Reference
-[1] [From Red Wine to Red Tomato: Composition with Context](https://www.ri.cmu.edu/wp-content/uploads/2017/12/composing_cvpr17.pdf)
-
-[2] [Attributes as Operators: Factorizing Unseen Attribute-Object Compositions](https://arxiv.org/abs/1803.09851)
-
-[3] [
-Zero-Shot Learning - A Comprehensive Evaluation of the Good, the Bad and the Ugly](https://arxiv.org/abs/1707.00600)
-
-[4] [Low-shot Visual Recognition by Shrinking and Hallucinating Features](https://arxiv.org/abs/1606.02819)
-
-[5] [A Closer Look at Few-shot Classification](https://github.com/wyharveychen/CloserLookFewShot)
