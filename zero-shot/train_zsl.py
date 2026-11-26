@@ -191,8 +191,9 @@ def run_training(args):
 
             avg_prec1_s, full_s = validate(args, test_loader_seen, model)
 
+            # replication fix: upstream divided by zero when u = s = 0
             avg_prec1_h = (2 * avg_prec1_s * avg_prec1_u) / (
-                avg_prec1_s + avg_prec1_u)
+                avg_prec1_s + avg_prec1_u + 1e-12)
             full_h = 2 * full_s * full_u / (full_s + full_u + 1e-12)
             avg_prec1 = avg_prec1_h
             logging.info('Epoch [{}] Val: * Summary: \n'
@@ -402,7 +403,7 @@ def test(args):
         avg_prec1_s, full_s = validate(args, test_loader, model)
 
         avg_prec1_h = (2 * avg_prec1_s * avg_prec1_u) / (
-            avg_prec1_s + avg_prec1_u)
+            avg_prec1_s + avg_prec1_u + 1e-12)
 
         logging.info('* Summary: GZSL @Unseen: {:.4f}\t@Seen: {:.4f}\t'
                      '@mean_h: {:.4f}'.format(

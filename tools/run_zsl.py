@@ -27,6 +27,8 @@ def main():
     ap.add_argument('--file', default='configs_zsl.json')
     ap.add_argument('--num-workers', default='0', help='DataLoader workers (0 is fastest on Windows)')
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--skip-done', action='store_true',
+                    help='skip runs whose log in logs/ shows they finished (to resume after a stop)')
     args = ap.parse_args()
 
     with open(args.file) as f:
@@ -46,6 +48,10 @@ def main():
             for k, v in opts.items():
                 cmd += [k] if v == '' else [k, v]
             log = os.path.join('logs', f'{name}-seed{seed}.out')
+            if args.skip_done and os.path.exists(log) and \
+                    '** Best' in open(log, encoding='utf8', errors='replace').read():
+                print(f'skip {name} seed {seed}: already finished ({log})', flush=True)
+                continue
             print(' '.join(cmd), '>', log, flush=True)
             if args.dry_run:
                 continue
