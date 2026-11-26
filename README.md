@@ -15,8 +15,8 @@ What this repository adds to the upstream code:
   longer publicly accessible.
 - **Extension**: *to be added* (see [Extension](#extension)).
 
-> Status: AWA2 ZSL run with 3 seeds; it does **not** reach the paper's number (see [2.3](#23-results)).
-> Other ZSL datasets and GZSL not yet run. Compositional (Table 4) pipeline written, not yet run.
+> Status: all five ZSL datasets run in both the ZSL and GZSL settings, 3 seeds each. None reaches the
+> paper's numbers (see [2.3](#23-results)). The compositional (Table 4) pipeline is written but not yet run.
 
 ---
 
@@ -75,35 +75,60 @@ task embedding network, divided by 10 at epochs 30 and 45, 60 epochs in total (A
 drop at epoch 5), embedding-loss weight β = 0.1, and a 2-layer task network for aPY.
 `awa2-*-upstream` reproduce the upstream `configs.json` exactly (it uses hidden size 512, the paper says 2048).
 
-A 60-epoch AWA2 run takes about 30 minutes on an RTX 3080 Laptop GPU.
-
 ### 2.3 Results
 
-AWA2, conventional ZSL, top-1 (%), mean ± std over seeds 0, 1, 2 ([results/zsl.md](results/zsl.md)):
-
-| config | task-net hidden | best epoch, upstream metric | best epoch, standard metric | final epoch, upstream metric | final epoch, standard metric | paper |
-|---|---|---|---|---|---|---|
-| `awa2-zsl-upstream` (upstream `configs.json`) | 512 | 48.7 ± 4.4 | 45.3 ± 3.9 | 33.6 ± 0.7 | 33.0 ± 0.9 | 69.3 |
-| `awa2-zsl` (paper text) | 2048 | 36.7 ± 3.2 | 32.5 ± 4.9 | 31.9 ± 4.3 | 25.8 ± 3.7 | 69.3 |
+All five datasets, both settings, mean ± std over seeds 0, 1, 2. Full table with every metric:
+[results/zsl.md](results/zsl.md).
 
 "Best epoch" is the epoch with the highest upstream metric on the test set (how the upstream code picks
-its number). "Final epoch" is epoch 60, with no selection on the test set.
+its number). "Final epoch" is the last epoch, with no selection on the test set. "Standard" is per-class
+accuracy over the whole test set (Xian et al.); "upstream" is the batched metric (difference 1 below).
+
+**Conventional ZSL, top-1 (%)**
+
+| config | task-net hidden | best epoch, upstream | best epoch, standard | final epoch, standard | paper |
+|---|---|---|---|---|---|
+| `sun-zsl` | 2048 | 11.6 ± 0.1 | 10.8 ± 0.1 | 10.6 ± 0.4 | 60.9 |
+| `cub-zsl` | 2048 | 21.2 ± 0.7 | 20.1 ± 0.5 | 20.2 ± 0.6 | 56.9 |
+| `awa1-zsl` | 2048 | 41.4 ± 5.9 | 38.9 ± 8.1 | 39.0 ± 7.0 | 70.8 |
+| `awa2-zsl` | 2048 | 36.7 ± 3.2 | 32.5 ± 4.9 | 25.8 ± 3.7 | 69.3 |
+| `awa2-zsl-upstream` | 512 | 48.7 ± 4.4 | 45.3 ± 3.9 | 33.0 ± 0.9 | 69.3 |
+| `apy-zsl` (2-layer) | 2048 | 24.8 ± 4.6 | 28.5 ± 4.2 | 21.3 ± 3.3 | 42.2 |
+
+**Generalized ZSL, standard metric (%)**: u = unseen, s = seen, H = harmonic mean
+
+| config | best epoch u | best epoch s | best epoch H | final epoch H | paper u / s / H |
+|---|---|---|---|---|---|
+| `sun-gzsl` | 2.6 ± 0.5 | 0.9 ± 0.1 | 1.3 ± 0.1 | 1.2 ± 0.1 | 27.9 / 40.2 / 33.0 |
+| `cub-gzsl` | 11.7 ± 1.2 | 2.6 ± 0.6 | 4.3 ± 0.9 | 3.8 ± 0.6 | 41.0 / 61.4 / 49.2 |
+| `awa1-gzsl` | 17.6 ± 5.7 | 26.4 ± 26.1 | 15.3 ± 8.1 | 7.0 ± 0.7 | 50.5 / 84.4 / 63.2 |
+| `awa2-gzsl` | 10.9 ± 6.7 | 23.0 ± 15.8 | 14.4 ± 9.4 | 0.5 ± 0.4 | 36.7 / 90.6 / 52.2 |
+| `awa2-gzsl-upstream` | 22.2 ± 0.3 | 84.1 ± 1.3 | 35.1 ± 0.5 | 28.3 ± 10.0 | 36.7 / 90.6 / 52.2 |
+| `apy-gzsl` (2-layer) | 7.6 ± 1.1 | 63.9 ± 6.2 | 13.5 ± 1.8 | 12.3 ± 2.9 | 24.3 / 75.4 / 36.8 |
 
 What we observe:
 
-- **We do not reproduce the paper's AWA2 result.** Even the most generous number (best epoch on the test
-  set, upstream metric) is about 20 points below 69.3.
-- **The paper's hidden size (2048) is worse than the upstream config's (512)**, by 12 points at the best epoch.
-- **Unseen-class accuracy peaks early (epochs 4 to 27) and then falls**, while training accuracy on the
-  seen classes reaches about 97%. After the learning rate drops at epoch 30, the model fits the seen classes and
-  stops transferring to unseen ones.
-- **The classification loss hardly moves during training** (about 0.74 to 0.68). This fits the double
-  sigmoid in the upstream loss (difference 3 below): `BCEWithLogitsLoss` applied to an output that has
-  already gone through a sigmoid gives a weak gradient. This is a hypothesis we have not tested yet.
+- **No dataset reproduces the paper.** The gap is smallest for aPY ZSL (about 14 points) and largest for
+  SUN (50 points in ZSL; GZSL H of 1.3 against 33.0). This holds even for the most generous number
+  (best epoch chosen on the test set).
+- **The upstream config's hidden size (512) beats the paper's (2048)** on AWA2: by 12 points in ZSL and by
+  21 points of H in GZSL. It is the only GZSL config whose seen-class accuracy is near the paper's.
+- **With hidden size 2048 the model underfits.** The running training top-1 at the last epoch (seed 0)
+  is 16% on SUN, 26% on CUB and 56% on AWA2, against 91 to 93% on AWA1 and aPY and 99.6% for
+  AWA2 with hidden size 512. On SUN and CUB GZSL, seen-class accuracy (0.9% and 2.6%) is even lower than
+  unseen-class accuracy.
+- **The classification loss sits at about 0.69 = ln 2 for the whole run.** That is the lowest value
+  `BCEWithLogitsLoss` can reach when its input has already gone through a sigmoid (difference 3 below):
+  the input is confined to (0, 1), so the loss can't fall below ln 2 for negative classes. We think this
+  double sigmoid is the main cause of the gap, but we have not tested it yet (see [Extension](#4-extension)).
+- **Where the model does fit, it overfits.** On AWA2, unseen-class accuracy peaks early (epochs 4 to 27)
+  and then falls, while training accuracy with hidden size 512 reaches 99%.
+- **GZSL is unstable on AWA1/AWA2 with hidden 2048.** Some epochs collapse to predicting only seen or only
+  unseen classes. When u = s = 0 the upstream harmonic mean divided by zero; we added a small epsilon.
 - Runs are deterministic: the same seed gives the same numbers.
 
-Remaining datasets (AWA1, CUB, SUN, aPY) and GZSL: *not yet run*
-(`python tools/run_zsl.py all --seeds 0 1 2`).
+A 60-epoch AWA2 run takes about 30 minutes on an RTX 3080 Laptop GPU; SUN GZSL is the slowest at
+about 2.5 hours per run.
 
 Paper numbers for reference (Table 2):
 
@@ -152,7 +177,8 @@ published code, or reported as a separate result.
 | 8 | Table 4 headline row uses VGG-16 features | Configs are ResNet/DLA | ResNet-101; compare with Table 5's ResNet-101 row (AP 16.2, top-1 17.2) |
 
 Small code fixes (no effect on training): `test()` in `zero-shot/train_zsl.py` unpacked three values
-from `validate()`, which returns one; added `--seed`.
+from `validate()`, which returns one; the GZSL harmonic mean divided by zero when u = s = 0 (now `+ 1e-12`,
+which only changes epochs where both are 0); added `--seed`.
 
 ## 6. Repository layout
 

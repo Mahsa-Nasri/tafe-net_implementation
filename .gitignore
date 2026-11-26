@@ -7,3 +7,4 @@ data/
 zero-shot/checkpoints/
 logs/
 *.out
+__pycache__/

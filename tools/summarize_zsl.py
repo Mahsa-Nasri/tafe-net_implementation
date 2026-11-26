@@ -50,7 +50,8 @@ def fmt(xs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--root', default='zero-shot/checkpoints')
-    ap.add_argument('--out', default=None)
+    ap.add_argument('--out', default=None, help='write the Markdown table here')
+    ap.add_argument('--json', default=None, help='also write the rows as JSON here')
     ap.add_argument('--min-epochs', type=int, default=0, help='skip runs with fewer logged epochs')
     ap.add_argument('--configs-file', default='configs_zsl.json',
                     help='only report configs named in this file (ad-hoc runs are skipped)')
@@ -70,31 +71,42 @@ def main():
             continue  # unfinished or smoke runs
         groups[(a['config_name'], a['dataset'], a['gzsl'])].append((a.get('seed'), rows))
 
+    records = []  # one per table row
+    for (cfg, ds, gzsl), runs in sorted(groups.items()):
+        seeds = ','.join(str(s) for s, _ in runs)
+        fin = [r[-1] for _, r in runs]
+        if gzsl:
+            best = [max(r, key=lambda x: x['upstream_h']) for _, r in runs]
+            paper = PAPER['gzsl'].get(ds)
+            for i, k in enumerate(['u', 's', 'h']):
+                records.append(dict(config=cfg, dataset=ds, setting='gzsl', seeds=seeds, metric=k.upper(),
+                                    best_upstream=fmt([b['upstream_' + k] for b in best]),
+                                    best_full=fmt([b['full_' + k] for b in best]),
+                                    final_upstream=fmt([f['upstream_' + k] for f in fin]),
+                                    final_full=fmt([f['full_' + k] for f in fin]),
+                                    paper=str(paper[i]) if paper else '-'))
+        else:
+            best = [max(r, key=lambda x: x['upstream_top1']) for _, r in runs]
+            records.append(dict(config=cfg, dataset=ds, setting='zsl', seeds=seeds, metric='T1',
+                                best_upstream=fmt([b['upstream_top1'] for b in best]),
+                                best_full=fmt([b['full_top1'] for b in best]),
+                                final_upstream=fmt([f['upstream_top1'] for f in fin]),
+                                final_full=fmt([f['full_top1'] for f in fin]),
+                                paper=str(PAPER['zsl'].get(ds, '-'))))
+
     out = ['| config | seeds | metric | best-epoch (upstream) | best-epoch (full) | '
            'final-epoch (upstream) | final-epoch (full) | paper |',
            '|---|---|---|---|---|---|---|---|']
-    for (cfg, ds, gzsl), runs in sorted(groups.items()):
-        seeds = ','.join(str(s) for s, _ in runs)
-        if gzsl:
-            keys = ['u', 's', 'h']
-            paper = PAPER['gzsl'].get(ds)
-            for i, k in enumerate(keys):
-                best = [max(r, key=lambda x: x['upstream_h']) for _, r in runs]
-                fin = [r[-1] for _, r in runs]
-                out.append(f'| {cfg} | {seeds} | {k.upper()} | {fmt([b["upstream_" + k] for b in best])} | '
-                           f'{fmt([b["full_" + k] for b in best])} | {fmt([f["upstream_" + k] for f in fin])} | '
-                           f'{fmt([f["full_" + k] for f in fin])} | {paper[i] if paper else "-"} |')
-        else:
-            best = [max(r, key=lambda x: x['upstream_top1']) for _, r in runs]
-            fin = [r[-1] for _, r in runs]
-            out.append(f'| {cfg} | {seeds} | T1 | {fmt([b["upstream_top1"] for b in best])} | '
-                       f'{fmt([b["full_top1"] for b in best])} | {fmt([f["upstream_top1"] for f in fin])} | '
-                       f'{fmt([f["full_top1"] for f in fin])} | {PAPER["zsl"].get(ds, "-")} |')
+    out += [f'| {r["config"]} | {r["seeds"]} | {r["metric"]} | {r["best_upstream"]} | {r["best_full"]} | '
+            f'{r["final_upstream"]} | {r["final_full"]} | {r["paper"]} |' for r in records]
     text = '\n'.join(out) + '\n'
     print(text)
     if args.out:
         os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
         open(args.out, 'w', encoding='utf8').write(text)
+    if args.json:
+        os.makedirs(os.path.dirname(args.json) or '.', exist_ok=True)
+        json.dump(records, open(args.json, 'w', encoding='utf8'), ensure_ascii=False, indent=1)
 
 
 if __name__ == '__main__':
